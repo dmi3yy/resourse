@@ -1,6 +1,6 @@
 <?php
 /**
-version: 0.3.0
+version: 0.4.0
 
 Author:
 	* Bumkaka from modx.im
@@ -22,12 +22,32 @@ $resourse->document()->set('titl','Пропаганда')->set('pagetitle',$i)->
 
 #-------------------------------------------------------
 #Edit resourse #13 
-$resourse->edit(13)->set('pagetitle','new pagetitle')->save(null,false);
+$resourse->newDoc(13)->set('pagetitle','new pagetitle')->save(null,false);
 
 #-------------------------------------------------------
 $resourse->delete(8);
 
+
+//JSON && PHP < 5.3
+$t = test::Instance();
+function asd($json){
+	$t = test::Instance();
+	foreach($json as $key=>$val){
+		$t->set($key,$val);
+	}
+}
+$t->fromJson($json,'asd'); 
+
+//JSON && PHP >= 5.3
+$t = test::Instance();
+$t->fromJson($json, function($json) use ($t){
+	foreach($json as $key=>$val){
+		$t->set($key,$val);
+	}
+});
 */
+
+
 if(!defined('MODX_BASE_PATH')) {die('What are you doing? Get out of here!');}
 
 
@@ -39,7 +59,7 @@ class resourse {
 	private $tv = array();
 	private $tvid = array();
 	private $log = array();
-	private $new_resourse = 0;
+	private $edit = 0;
 	private $dafeult_field ;
 	private $table=array('"'=>'_',"'"=>'_',' '=>'_','.'=>'_',','=>'_','а'=>'a','б'=>'b','в'=>'v',
 		'г'=>'g','д'=>'d','е'=>'e','ё'=>'e','ж'=>'zh','з'=>'z','и'=>'i','й'=>'y','к'=>'k',
@@ -53,7 +73,7 @@ class resourse {
 
 	private $set;	
 	private $flag = false;
-	private $_table = array('site_content','site_tmplvar_contentvalues','site_tmplvars');
+	private $_table = array('site_content','site_tmplvar_contentvalues','site_tmplvars','site_templates','web_user_settings');
 	
 	private function __construct($modx){
 		try{
@@ -76,8 +96,7 @@ class resourse {
 	}
 	
 	public function document($id=0){
-		$this->new_resourse = $id == 0;
-		var_dump($this->new_resourse);
+		$this->newDoc = $id == 0;
 		$this->id = $id;
 		$this->field=array();
 		$this->set=array();
@@ -86,6 +105,8 @@ class resourse {
 		return $this;
 	}
 	
+	
+		
 	private function makeTable(){
 		//@TODO: check exists table
 		$flag = true;
@@ -140,11 +161,35 @@ class resourse {
 	
 	public function set($key,$value){
 		if(is_scalar($value) && is_scalar($key) && !empty($key)){
+			switch($key){
+				case 'template': {
+					$value = trim($value);
+					$value = $this->setTemplate($value);
+					break;
+				}
+			}
 			$this->field[$key] = $value;
 		}
 		return $this;
 	}
 	
+	private function setTemplate($tpl) {
+		if(!is_numeric($tpl) || $tpl != (int) $tpl) {
+			try{
+				if(is_scalar($tpl)){
+					$sql = "SELECT id FROM {$this->_table['site_templates']} WHERE templatename = '{$tpl}'";
+					$rs = $this->query($sql);
+					if(!$rs || $this->modx->db->getRecordCount($rs) <= 0) throw new Exception("Template {$tpl} is not exists");
+					$tpl = $this->modx->db->getValue($rs);
+				} else throw new Exception("Invalid template name: ".print_r($tpl,1));
+			}catch(Exception $e){
+				$tpl = 0;
+				die($e->getMessage()); 
+			}
+		}
+		return (int)$tpl;
+	}
+		
 	public function get($key){
 		return isset($this->field[$key]) ? $this->field[$key] : null;
 	}
@@ -191,23 +236,137 @@ class resourse {
 		return $this;
 	}
 	
-	public function delete($id,$fire_events = null){
-		if(is_scalar($id)){
-			$id = array($id);
+	private function systemID(){
+		$ignore = array(
+			0, //empty document
+			(int)$this->modx->config['site_start'],
+			(int)$this->modx->config['error_page'],
+			(int)$this->modx->config['unauthorized_page'],
+			(int)$this->modx->config['site_unavailable_page']
+		);
+		$data = $this->query("SELECT DISTINCT setting_value FROM {$this->_table['web_user_settings']} WHERE setting_name='login_home' AND setting_value!=''");
+		$data = $this->modx->db->makeArray($data);
+		foreach($data as $item){
+			$ignore[]=(int)$item['setting_value'];
 		}
-		foreach($id as $i){
-			if((int)$i>0){
-				$this->query("DELETE from {$this->_table['site_content']} where id=".(int)$i);
-				$this->query("DELETE from {$this->_table['site_tmplvar_contentvalues']} where contentid=".(int)$i);
-				//@TODO: $this->invokeEvent('On..........',array(),$fire_events);
+		return array_unique($ignore);
+		
+	}
+	
+	public function delete($ids,$fire_events = null){
+		//@TODO: delete with SET deleted=1
+		$ignore = $this->systemID();
+		$_ids = $this->cleanIDs($ids, ',', $ignore);
+		try{
+			if(is_array($_ids) && $_ids!=array()){
+				$this->invokeEvent('OnBeforeEmptyTrash',array(
+					"ids"=>$_ids
+				),$fire_events);
+		
+				$id = $this->sanitarIn($_ids);
+				$this->query("DELETE from {$this->_table['site_content']} where id IN ({$id})");
+				$this->query("DELETE from {$this->_table['site_tmplvar_contentvalues']} where contentid IN ({$id})");
+				
+				$this->invokeEvent('OnEmptyTrash',array(
+					"ids"=>$_ids
+				),$fire_events);
+			} else throw new Exception('Invalid IDs list for delete: <pre>'.print_r($ids,1).'</pre> please, check ignore list: <pre>'.print_r($ignore,1).'</pre>');
+		}catch(Exception $e){ die($e->getMessage()); }
+		
+		return $this;
+	}
+	
+	final private function cleanIDs($IDs,$sep=',',$ignore = array()) {
+        $out=array();
+        if(!is_array($IDs)){
+			try{
+				if(is_scalar($IDs)){
+					$IDs=explode($sep, $IDs);
+				} else {
+					$IDs = array();
+					throw new Exception('Invalid IDs list <pre>'.print_r($IDs,1).'</pre>');
+				}
+			} catch(Exception $e){ die($e->getMessage()); }
+        }
+        foreach($IDs as $item){
+            $item = trim($item);
+            if(is_numeric($item) && (int)$item>=0){ //Fix 0xfffffffff 
+				if(!empty($ignore) && in_array((int)$item, $ignore, true)){
+					$this->log[] =  'Ignore id '.(int)$item;
+				}else{
+					$out[]=(int)$item;
+				}
+            }
+        }
+		print_r($ignore);
+        $out = array_unique($out);
+		return $out;
+	}
+	
+	final protected function check($id){
+           return (is_array($id) && $id!=array()) ? true : false;
+    }
+	
+	final protected function sanitarIn($data,$sep=','){
+		if(!is_array($data)){
+			$data=explode($sep,$data);
+		}
+		$out=array();
+		foreach($data as $item){
+			$out[]=$this->modx->db->escape($item);
+		}
+		$out="'".implode("','",$out)."'";
+		return $out;
+	}
+	
+	public function fromJson($data,$callback=null){
+		try{
+			if(is_scalar($data) && !empty($data)){
+				$json = json_decode($data);
+			}else throw new Exception("json is not string with json data");
+			if ($this->jsonError($json)) { 
+				if(isset($callback) && is_callable($callback)){
+					call_user_func_array($callback,array($json));
+				}else{
+					if(isset($callback)) throw new Exception("Can't call callback JSON unpack <pre>".print_r($callback,1)."</pre>");
+					foreach($json as $key=>$val){
+						$this->set($key,$val);
+					}
+				}
+			} else throw new Exception('Error from JSON decode: <pre>'.print_r($data,1).'</pre>');
+		}catch(Exception $e){ die($e->getMessage()); }
+		return $this;
+	}
+	
+	public function toJson($callback=null){
+		try{
+			$data = $this->toArray();
+			$json = json_encode($data);
+			if(!$this->jsonError($data,$json)) {
+				$json = false;
+				throw new Exception('Error from JSON decode: <pre>'.print_r($data,1).'</pre>');
+			}
+		}catch(Exception $e){ die($e->getMessage()); }
+		return $json;
+	}
+	
+	private function jsonError($data){
+		$flag = false;
+		if(!function_exists('json_last_error')){
+			function json_last_error(){
+				return JSON_ERROR_NONE;
 			}
 		}
-		return $this;
+		if(json_last_error() === JSON_ERROR_NONE && is_object($data) && $data instanceof stdClass){
+			$flag = true;
+		}
+		return $flag;
 	}
 	
 	public function toArray(){
 		return $this->field;
 	}
+	
 	private function checkAlias($alias){
 		if($this->modx->config['friendly_urls']){
 			$flag = false;
@@ -245,9 +404,14 @@ class resourse {
 		}
 		$this->set('alias',$this->getAlias());
 
+		$this->invokeEvent('OnBeforeDocFormSave',array (
+			"mode" => $this->newDoc ? "new" : "upd",
+			"id" => $this->id ? $this->id : ''
+		),$fire_events);
+		
 		$fld = $this->toArray();
 		foreach($this->default_field as $key=>$value){
-			if ($this->new_resourse && $this->get($key) == '' && $this->get($key)!==$value){
+			if ($this->newDoc && $this->get($key) == '' && $this->get($key)!==$value){
 				$this->set($key,$value)->Uset($key);
 			} else {
 				$this->Uset($key);
@@ -255,7 +419,7 @@ class resourse {
 			unset($fld[$key]);
 		}
 		if (!empty($this->set)){
-			if($this->new_resourse){
+			if($this->newDoc){
 				$SQL = "INSERT into {$this->_table['site_content']} SET ".implode(', ', $this->set);
 			}else{
 				$SQL = "UPDATE {$this->_table['site_content']} SET ".implode(', ', $this->set)." WHERE id = ".$this->id;
@@ -263,7 +427,7 @@ class resourse {
 			$this->query($SQL);
 		}
 		
-		if($this->new_resourse) $this->id = $this->modx->db->getInsertId();
+		if($this->newDoc) $this->id = $this->modx->db->getInsertId();
 		
 		foreach($fld as $key=>$value){
 			if ($value=='') continue;
@@ -275,7 +439,11 @@ class resourse {
 				}
 			}
 		}
-		$this->invokeEvent('OnDocFormSave',array(),$fire_events);
+		$this->invokeEvent('OnDocFormSave',array (
+			"mode" => $this->newDoc ? "new" : "upd",
+			"id" => $this->id
+		),$fire_events);
+		
 		if($clearCache){ 
 			$this->clear_chache($fire_events); 
 		}
