@@ -4,6 +4,7 @@
 * Новые меоды fromJson() и toJson() с поддержкой callback функций
 * Корректные аргументы при вызове плагинов на событии OnDocFormSave
 * Поддержка новых событий OnBeforeDocFormSave, OnEmptyTrash, OnBeforeEmptyTrash
+* Массовое удаление документов через WHERE IN
 
 ## 0.3.0 (22.05.2013)
 * Поддержка короткого синтаксиса
