@@ -22,7 +22,7 @@ $resourse->document()->set('titl','Пропаганда')->set('pagetitle',$i)->
 
 #-------------------------------------------------------
 #Edit resourse #13 
-$resourse->newDoc(13)->set('pagetitle','new pagetitle')->save(null,false);
+$resourse->document(13)->set('pagetitle','new pagetitle')->save(null,false);
 
 #-------------------------------------------------------
 $resourse->delete(8);
