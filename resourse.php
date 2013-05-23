@@ -416,8 +416,8 @@ class resourse {
 			}
 			if(($flag && $this->newDoc) || (!$this->newDoc && $flag && $this->id != $flag)){
 				$suffix = substr($alias, -2);
-				if(preg_match('/-(\d+)/',$suffix) && (int)$suffix>1){
-					(int)$suffix++;
+				if(preg_match('/-(\d+)/',$suffix,$tmp) && isset($tmp[1]) && (int)$tmp[1]>1){
+					$suffix = (int)$tmp[1] + 1;
 					$alias = substr($alias, 0, -2) . '-'. $suffix;
 				}else{
 					$alias .= '-2';
