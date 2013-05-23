@@ -1,6 +1,6 @@
 <?php
 /**
-version: 0.4.0
+version: 0.4.1
 
 Author:
 	* Bumkaka from modx.im
@@ -100,13 +100,49 @@ class resourse {
 		$this->id = $id;
 		$this->field=array();
 		$this->set=array();
-		$this->default_field = array('pagetitle'=>'New document','alias'=>'','parent'=>'0','createdon'=>time(),'createdby'=>'0','editedon'=>'0','editedby'=>'0','published'=>'1','deleted'=>'0','hidemenu'=>'1','template'=>'0','content'=>'');
+		$this->default_field = array(
+			'type'=>'document',
+			'contentType'=>'text/html',
+			'pagetitle'=>'New document',
+			'longtitle'=>'',
+			'description'=>'',
+			'alias'=>'',
+			'link_attributes'=>'',
+			'published'=>'1',
+			'pub_date'=>'0',
+			'unpub_date'=>'0',
+			'parent'=>'0',
+			'isfolder'=>'0',
+			'introtext'=>'',
+			'content'=>'',
+			'richtext'=>'1',
+			'template'=>'0',
+			'menuindex'=>'0',
+			'searchable'=>'1',
+			'cacheable'=>'1',
+			'createdon'=>time(),
+			'createdby'=>'0',
+			'editedon'=>'0',
+			'editedby'=>'0',
+			'deleted'=>'0',
+			'deletedon'=>'0',
+			'deletedby'=>'0',
+			'publishedon'=>'0',
+			'publishedby'=>'0',
+			'menutitle'=>'',
+			'donthit'=>'0',
+			'haskeywords'=>'0',
+			'hasmetatags'=>'0',
+			'privateweb'=>'0',
+			'privatemgr'=>'0',
+			'content_dispo'=>'0',
+			'hidemenu'=>'1',
+			'alias_visible'=>'1'
+		);
 		$this->flag = true;
 		return $this;
 	}
 	
-	
-		
 	private function makeTable(){
 		//@TODO: check exists table
 		$flag = true;
@@ -200,6 +236,8 @@ class resourse {
 		}else{
 			if($this->get('alias')!=''){
 				$alias = $this->get('alias');
+			}else{
+				$alias = '';
 			}
 		}
 		return $this->checkAlias($alias);
@@ -372,18 +410,17 @@ class resourse {
 			$flag = false;
 			$_alias = $this->modx->db->escape($alias);
 			if(!$this->modx->config['allow_duplicate_alias'] || ($this->modx->config['allow_duplicate_alias'] && $this->modx->conifg['use_alias_path'])){
-				$flag = $this->modx->db->getValue("SELECT id FROM {$this->_table['site_content']} WHERE alias='{$_alias}' AND parent={$this->get('parent')} LIMIT 1");
+				$flag = $this->modx->db->getValue($this->query("SELECT id FROM {$this->_table['site_content']} WHERE alias='{$_alias}' AND parent={$this->get('parent')} LIMIT 1"));
 			} else {
-				$flag = $this->modx->db->getValue("SELECT id FROM {$this->_table['site_content']} WHERE alias='{$_alias}' LIMIT 1");
+				$flag = $this->modx->db->getValue($this->query("SELECT id FROM {$this->_table['site_content']} WHERE alias='{$_alias}' LIMIT 1"));
 			}
-			
-			if($flag){
-				$suffix = substr($alias, -1);
-				if(preg_match('/\d+/',$suffix) && (int)$suffix>1){
+			if(($flag && $this->newDoc) || (!$this->newDoc && $flag && $this->id != $flag)){
+				$suffix = substr($alias, -2);
+				if(preg_match('/-(\d+)/',$suffix) && (int)$suffix>1){
 					(int)$suffix++;
-					$alias = substr($alias, 0, -1) . $suffix;
+					$alias = substr($alias, 0, -2) . '-'. $suffix;
 				}else{
-					$alias .= '2';
+					$alias .= '-2';
 				}
 				$alias = $this->checkAlias($alias);
 			}
@@ -412,10 +449,9 @@ class resourse {
 		$fld = $this->toArray();
 		foreach($this->default_field as $key=>$value){
 			if ($this->newDoc && $this->get($key) == '' && $this->get($key)!==$value){
-				$this->set($key,$value)->Uset($key);
-			} else {
-				$this->Uset($key);
+				$this->set($key,$value);
 			}
+			$this->Uset($key);
 			unset($fld[$key]);
 		}
 		if (!empty($this->set)){
