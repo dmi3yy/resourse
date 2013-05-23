@@ -174,7 +174,7 @@ class resourse {
 		return $this;
 	}
 	
-	public function clear_chache($fire_events = null){
+	public function clearCache($fire_events = null){
 		$this->modx->clearCache();
 		include_once (MODX_MANAGER_PATH . '/processors/cache_sync.class.processor.php');
 		$sync = new synccache();
@@ -481,7 +481,7 @@ class resourse {
 		),$fire_events);
 		
 		if($clearCache){ 
-			$this->clear_chache($fire_events); 
+			$this->clearCache($fire_events); 
 		}
 		$this->flag = false;
 		return $this->id;
